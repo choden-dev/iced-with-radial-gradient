@@ -4,9 +4,11 @@ mod solid;
 use gradient::Gradient;
 use solid::Solid;
 
+use crate::core;
 use crate::core::{Background, Rectangle, Transformation};
 use crate::graphics;
 use crate::graphics::color;
+use crate::quad::gradient::GradientRenderStrategy;
 
 use bytemuck::{Pod, Zeroable};
 
@@ -111,12 +113,13 @@ impl State {
 
                         solid_offset += count;
                     }
-                    Kind::Gradient => {
+                    Kind::Gradient(strategy) => {
                         pipeline.gradient.render(
                             render_pass,
                             &layer.constants,
                             &layer.gradient,
                             gradient_offset..(gradient_offset + count),
+                            strategy,
                         );
 
                         gradient_offset += count;
@@ -275,8 +278,14 @@ impl Batch {
                     ),
                     quad,
                 });
-
-                Kind::Gradient
+                match gradient {
+                    core::gradient::Gradient::Linear(_) => {
+                        Kind::Gradient(GradientRenderStrategy::Linear)
+                    }
+                    core::gradient::Gradient::Radial(_) => {
+                        Kind::Gradient(GradientRenderStrategy::Radial)
+                    }
+                }
             }
         };
 
@@ -309,7 +318,7 @@ enum Kind {
     /// A solid quad
     Solid,
     /// A gradient quad
-    Gradient,
+    Gradient(GradientRenderStrategy),
 }
 
 fn color_target_state(format: wgpu::TextureFormat) -> [Option<wgpu::ColorTargetState>; 1] {

@@ -7,6 +7,7 @@ use crate::core::{self, Color, Point, Rectangle};
 
 use bytemuck::{Pod, Zeroable};
 use half::f16;
+use iced_core::gradient::Radial;
 use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -17,6 +18,8 @@ pub enum Gradient {
     /// A linear gradient interpolates colors along a direction from its `start` to its `end`
     /// point.
     Linear(Linear),
+    /// A radial gradient
+    Radial(Radial),
 }
 
 impl From<Linear> for Gradient {
@@ -24,12 +27,18 @@ impl From<Linear> for Gradient {
         Self::Linear(gradient)
     }
 }
+impl From<Radial> for Gradient {
+    fn from(gradient: Radial) -> Self {
+        Self::Radial(gradient)
+    }
+}
 
 impl Gradient {
     /// Packs the [`Gradient`] for use in shader code.
     pub fn pack(&self) -> Packed {
         match self {
-            Gradient::Linear(linear) => linear.pack(),
+            Gradient::Linear(linear) => Packed::Linear(linear.pack()),
+            Gradient::Radial(_) => unreachable!(),
         }
     }
 }
@@ -91,7 +100,7 @@ impl Linear {
     }
 
     /// Packs the [`Gradient`] for use in shader code.
-    pub fn pack(&self) -> Packed {
+    pub fn pack(&self) -> LinearPacked {
         let mut colors = [[0u32; 2]; 8];
         let mut offsets = [f16::from(0u8); 8];
 
@@ -115,7 +124,7 @@ impl Linear {
 
         let direction = [self.start.x, self.start.y, self.end.x, self.end.y];
 
-        Packed {
+        LinearPacked {
             colors,
             offsets,
             direction,
@@ -123,10 +132,20 @@ impl Linear {
     }
 }
 
+/// Packed data for shader
+///
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum Packed {
+    /// [`LinearPacked`] (packed data for [`Linear`]
+    Linear(LinearPacked),
+    /// [`RadialPacked`] (packed data for [`Radial`]
+    Radial(RadialPacked),
+}
+
 /// Packed [`Gradient`] data for use in shader code.
 #[derive(Debug, Copy, Clone, PartialEq, Zeroable, Pod)]
 #[repr(C)]
-pub struct Packed {
+pub struct RadialPacked {
     // 8 colors, each channel = 16 bit float, 2 colors packed into 1 u32
     colors: [[u32; 2]; 8],
     // 8 offsets, 8x 16 bit floats packed into 4 u32s
@@ -134,7 +153,18 @@ pub struct Packed {
     direction: [f32; 4],
 }
 
-/// Creates a new [`Packed`] gradient for use in shader code.
+/// Packed [`Gradient`] data for use in shader code.
+#[derive(Debug, Copy, Clone, PartialEq, Zeroable, Pod)]
+#[repr(C)]
+pub struct LinearPacked {
+    // 8 colors, each channel = 16 bit float, 2 colors packed into 1 u32
+    colors: [[u32; 2]; 8],
+    // 8 offsets, 8x 16 bit floats packed into 4 u32s
+    offsets: [u32; 4],
+    direction: [f32; 4],
+}
+
+/// Creates a new [`LinearPacked`] gradient for use in shader code.
 pub fn pack(gradient: &core::Gradient, bounds: Rectangle) -> Packed {
     match gradient {
         core::Gradient::Linear(linear) => {
@@ -164,11 +194,49 @@ pub fn pack(gradient: &core::Gradient, bounds: Rectangle) -> Packed {
 
             let direction = [start.x, start.y, end.x, end.y];
 
-            Packed {
+            Packed::Linear(LinearPacked {
                 colors,
                 offsets,
                 direction,
+            })
+        }
+
+        core::Gradient::Radial(radial) => {
+            let mut colors = [[0u32; 2]; 8];
+            let mut offsets = [f16::from(0u8); 8];
+
+            for (index, stop) in radial.stops.iter().enumerate() {
+                let [r, g, b, a] =
+                    color::pack(stop.map_or(Color::default(), |s| s.color)).components();
+
+                colors[index] = [
+                    pack_f16s([f16::from_f32(r), f16::from_f32(g)]),
+                    pack_f16s([f16::from_f32(b), f16::from_f32(a)]),
+                ];
+
+                offsets[index] = stop.map_or(f16::from_f32(2.0), |s| f16::from_f32(s.offset));
             }
+
+            let offsets = [
+                pack_f16s([offsets[0], offsets[1]]),
+                pack_f16s([offsets[2], offsets[3]]),
+                pack_f16s([offsets[4], offsets[5]]),
+                pack_f16s([offsets[6], offsets[7]]),
+            ];
+
+            // center.xy, inner_radius, outer_radius
+            let direction = [
+                (bounds.x + bounds.width) / 2.0,
+                (bounds.y + bounds.height) / 2.0,
+                0f32,
+                bounds.x.max(bounds.width) / 2.0,
+            ];
+
+            Packed::Radial(RadialPacked {
+                colors,
+                offsets,
+                direction,
+            })
         }
     }
 }

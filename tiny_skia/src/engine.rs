@@ -135,43 +135,83 @@ impl Engine {
             &tiny_skia::Paint {
                 shader: match background {
                     Background::Color(color) => tiny_skia::Shader::SolidColor(into_color(*color)),
-                    Background::Gradient(Gradient::Linear(linear)) => {
-                        let (start, end) = linear.angle.to_distance(&quad.bounds);
-
-                        let stops: Vec<tiny_skia::GradientStop> = linear
-                            .stops
-                            .into_iter()
-                            .flatten()
-                            .map(|stop| {
-                                tiny_skia::GradientStop::new(
-                                    stop.offset,
-                                    tiny_skia::Color::from_rgba(
-                                        stop.color.b,
-                                        stop.color.g,
-                                        stop.color.r,
-                                        stop.color.a,
+                    Background::Gradient(gradient) => match gradient {
+                        Gradient::Radial(radial) => {
+                            let stops: Vec<tiny_skia::GradientStop> = radial
+                                .stops
+                                .into_iter()
+                                .flatten()
+                                .map(|stop| {
+                                    tiny_skia::GradientStop::new(
+                                        stop.offset,
+                                        tiny_skia::Color::from_rgba(
+                                            stop.color.b,
+                                            stop.color.g,
+                                            stop.color.r,
+                                            stop.color.a,
+                                        )
+                                        .expect("Create color"),
                                     )
-                                    .expect("Create color"),
-                                )
-                            })
-                            .collect();
+                                })
+                                .collect();
 
-                        tiny_skia::LinearGradient::new(
-                            tiny_skia::Point {
-                                x: start.x,
-                                y: start.y,
-                            },
-                            tiny_skia::Point { x: end.x, y: end.y },
-                            if stops.is_empty() {
-                                vec![tiny_skia::GradientStop::new(0.0, tiny_skia::Color::BLACK)]
-                            } else {
-                                stops
-                            },
-                            tiny_skia::SpreadMode::Pad,
-                            tiny_skia::Transform::identity(),
-                        )
-                        .expect("Create linear gradient")
-                    }
+                            tiny_skia::RadialGradient::new(
+                                tiny_skia::Point {
+                                    x: quad.bounds.x,
+                                    y: quad.bounds.y,
+                                },
+                                tiny_skia::Point {
+                                    x: quad.bounds.x + quad.bounds.width,
+                                    y: quad.bounds.y + quad.bounds.height,
+                                },
+                                (quad.bounds.width / 2.0).max(quad.bounds.height / 2.0),
+                                if stops.is_empty() {
+                                    vec![tiny_skia::GradientStop::new(0.0, tiny_skia::Color::BLACK)]
+                                } else {
+                                    stops
+                                },
+                                tiny_skia::SpreadMode::Pad,
+                                tiny_skia::Transform::identity(),
+                            )
+                            .expect("Create radial gradient")
+                        }
+                        Gradient::Linear(linear) => {
+                            let (start, end) = linear.angle.to_distance(&quad.bounds);
+                            let stops: Vec<tiny_skia::GradientStop> = linear
+                                .stops
+                                .into_iter()
+                                .flatten()
+                                .map(|stop| {
+                                    tiny_skia::GradientStop::new(
+                                        stop.offset,
+                                        tiny_skia::Color::from_rgba(
+                                            stop.color.b,
+                                            stop.color.g,
+                                            stop.color.r,
+                                            stop.color.a,
+                                        )
+                                        .expect("Create color"),
+                                    )
+                                })
+                                .collect();
+
+                            tiny_skia::LinearGradient::new(
+                                tiny_skia::Point {
+                                    x: start.x,
+                                    y: start.y,
+                                },
+                                tiny_skia::Point { x: end.x, y: end.y },
+                                if stops.is_empty() {
+                                    vec![tiny_skia::GradientStop::new(0.0, tiny_skia::Color::BLACK)]
+                                } else {
+                                    stops
+                                },
+                                tiny_skia::SpreadMode::Pad,
+                                tiny_skia::Transform::identity(),
+                            )
+                            .expect("Create linear gradient")
+                        }
+                    },
                 },
                 anti_alias: true,
                 ..tiny_skia::Paint::default()

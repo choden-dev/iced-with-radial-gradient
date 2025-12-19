@@ -94,14 +94,35 @@ pub struct SolidVertex2D {
 }
 
 /// A vertex which contains 2D position & packed gradient data.
-#[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
-#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct GradientVertex2D {
     /// The vertex position in 2D space.
     pub position: [f32; 2],
 
     /// The packed vertex data of the gradient.
     pub gradient: gradient::Packed,
+}
+
+/// A vertex which contains 2D position & packed linear gradient data.
+#[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
+#[repr(C)]
+pub struct LinearGradientVertex2D {
+    /// The vertex position in 2D space.
+    pub position: [f32; 2],
+
+    /// The packed vertex data of the gradient.
+    pub gradient: gradient::LinearPacked,
+}
+
+/// A vertex which contains 2D position & packed radial gradient data.
+#[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
+#[repr(C)]
+pub struct RadialGradientVertex2D {
+    /// The vertex position in 2D space.
+    pub position: [f32; 2],
+
+    /// The packed vertex data of the gradient.
+    pub gradient: gradient::RadialPacked,
 }
 
 /// The result of counting the attributes of a set of meshes.

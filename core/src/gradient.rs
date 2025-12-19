@@ -9,6 +9,8 @@ use std::cmp::Ordering;
 pub enum Gradient {
     /// A linear gradient interpolates colors along a direction at a specific angle.
     Linear(Linear),
+    /// A radial gradient has colours going out from its center
+    Radial(Radial),
 }
 
 impl Gradient {
@@ -16,6 +18,7 @@ impl Gradient {
     pub fn scale_alpha(self, factor: f32) -> Self {
         match self {
             Gradient::Linear(linear) => Gradient::Linear(linear.scale_alpha(factor)),
+            Gradient::Radial(radial) => Gradient::Radial(radial.scale_alpha(factor)),
         }
     }
 }
@@ -23,6 +26,12 @@ impl Gradient {
 impl From<Linear> for Gradient {
     fn from(gradient: Linear) -> Self {
         Self::Linear(gradient)
+    }
+}
+
+impl From<Radial> for Gradient {
+    fn from(gradient: Radial) -> Self {
+        Self::Radial(gradient)
     }
 }
 
@@ -38,6 +47,63 @@ pub struct ColorStop {
     ///
     /// [`offset`]: Self::offset
     pub color: Color,
+}
+
+/// A radial gradient
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Radial {
+    /// [`ColorStop`]s from the inside to edge of the gradient
+    pub stops: [Option<ColorStop>; 8],
+}
+
+impl Radial {
+    /// Creates the default radial gradient
+    pub fn new() -> Self {
+        Self { stops: [None; 8] }
+    }
+
+    /// Adds a new [`ColorStop`], defined by an offset and a color, to the gradient.
+    ///
+    /// Any `offset` that is not within `0.0..=1.0` will be silently ignored.
+    ///
+    /// Any stop added after the 8th will be silently ignored.
+    pub fn add_stop(mut self, offset: f32, color: Color) -> Self {
+        if offset.is_finite() && (0.0..=1.0).contains(&offset) {
+            let (Ok(index) | Err(index)) = self.stops.binary_search_by(|stop| match stop {
+                None => Ordering::Greater,
+                Some(stop) => stop.offset.partial_cmp(&offset).unwrap(),
+            });
+
+            if index < 8 {
+                self.stops[index] = Some(ColorStop { offset, color });
+            }
+        } else {
+            log::warn!("Gradient color stop must be within 0.0..=1.0 range.");
+        };
+
+        self
+    }
+
+    /// Adds multiple [`ColorStop`]s to the gradient.
+    ///
+    /// Any stop added after the 8th will be silently ignored.
+    pub fn add_stops(mut self, stops: impl IntoIterator<Item = ColorStop>) -> Self {
+        for stop in stops {
+            self = self.add_stop(stop.offset, stop.color);
+        }
+
+        self
+    }
+
+    /// Scales the alpha channel of the [`Radial`] gradient by the given
+    /// factor.
+    pub fn scale_alpha(mut self, factor: f32) -> Self {
+        for stop in self.stops.iter_mut().flatten() {
+            stop.color.a *= factor;
+        }
+
+        self
+    }
 }
 
 /// A linear gradient.
