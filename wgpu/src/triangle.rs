@@ -6,6 +6,7 @@ use crate::core::{Point, Rectangle, Size, Transformation, Vector};
 use crate::graphics::Antialiasing;
 use crate::graphics::mesh::{self, Mesh};
 
+use iced_graphics::mesh::{LinearGradientVertex2D, RadialGradientVertex2D};
 use rustc_hash::FxHashMap;
 use std::collections::hash_map;
 use std::sync::Weak;
@@ -370,7 +371,11 @@ impl Layer {
         let _ = self.solid.vertices.resize(device, count.solid_vertices);
         let _ = self
             .gradient
-            .vertices
+            .radial_vertices
+            .resize(device, count.gradient_vertices);
+        let _ = self
+            .gradient
+            .linear_vertices
             .resize(device, count.gradient_vertices);
 
         if self.solid.uniforms.resize(device, count.solids) {
@@ -433,13 +438,57 @@ impl Layer {
                     );
                 }
                 Mesh::Gradient { buffers, .. } => {
-                    gradient_vertex_offset += self.gradient.vertices.write(
-                        device,
-                        encoder,
-                        belt,
-                        gradient_vertex_offset,
-                        &buffers.vertices,
-                    );
+                    let radial_vertices: Vec<RadialGradientVertex2D> = buffers
+                        .vertices
+                        .iter()
+                        .filter_map(|vertex| {
+                            if let iced_graphics::gradient::Packed::Radial(radial) = vertex.gradient
+                            {
+                                Some(RadialGradientVertex2D {
+                                    gradient: radial,
+                                    position: vertex.position,
+                                })
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+
+                    let linear_vertices: Vec<LinearGradientVertex2D> = buffers
+                        .vertices
+                        .iter()
+                        .filter_map(|vertex| {
+                            if let iced_graphics::gradient::Packed::Linear(linear) = vertex.gradient
+                            {
+                                Some(LinearGradientVertex2D {
+                                    gradient: linear,
+                                    position: vertex.position,
+                                })
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+
+                    if !radial_vertices.is_empty() {
+                        gradient_vertex_offset += self.gradient.radial_vertices.write(
+                            device,
+                            encoder,
+                            belt,
+                            gradient_vertex_offset,
+                            &radial_vertices,
+                        );
+                    }
+
+                    if !linear_vertices.is_empty() {
+                        gradient_vertex_offset += self.gradient.linear_vertices.write(
+                            device,
+                            encoder,
+                            belt,
+                            gradient_vertex_offset,
+                            &linear_vertices,
+                        );
+                    }
 
                     gradient_uniform_offset += self.gradient.uniforms.write(
                         device,
@@ -531,12 +580,26 @@ impl Layer {
                         &[(num_gradients * std::mem::size_of::<Uniforms>()) as u32],
                     );
 
-                    render_pass.set_vertex_buffer(
-                        0,
-                        self.gradient
-                            .vertices
-                            .range(gradient_offset, gradient_offset + buffers.vertices.len()),
-                    );
+                    if buffers.vertices.iter().any(|vertex| {
+                        if let iced_graphics::gradient::Packed::Radial(_) = vertex.gradient {
+                            return true;
+                        }
+                        false
+                    }) {
+                        render_pass.set_vertex_buffer(
+                            0,
+                            self.gradient
+                                .radial_vertices
+                                .range(gradient_offset, gradient_offset + buffers.vertices.len()),
+                        );
+                    } else {
+                        render_pass.set_vertex_buffer(
+                            0,
+                            self.gradient
+                                .linear_vertices
+                                .range(gradient_offset, gradient_offset + buffers.vertices.len()),
+                        );
+                    }
 
                     num_gradients += 1;
                     gradient_offset += buffers.vertices.len();
@@ -761,16 +824,24 @@ mod gradient {
 
     #[derive(Debug)]
     pub struct Layer {
-        pub vertices: Buffer<mesh::GradientVertex2D>,
+        pub linear_vertices: Buffer<mesh::LinearGradientVertex2D>,
+        pub radial_vertices: Buffer<mesh::RadialGradientVertex2D>,
         pub uniforms: Buffer<triangle::Uniforms>,
         pub constants: wgpu::BindGroup,
     }
 
     impl Layer {
         pub fn new(device: &wgpu::Device, constants_layout: &wgpu::BindGroupLayout) -> Self {
-            let vertices = Buffer::new(
+            let linear_vertices = Buffer::new(
                 device,
-                "iced_wgpu.triangle.gradient.vertex_buffer",
+                "iced_wgpu.triangle.linear_gradient.vertex_buffer",
+                triangle::INITIAL_VERTEX_COUNT,
+                wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            );
+
+            let radial_vertices = Buffer::new(
+                device,
+                "iced_wgpu.triangle.radial_gradient.vertex_buffer",
                 triangle::INITIAL_VERTEX_COUNT,
                 wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             );
@@ -785,7 +856,8 @@ mod gradient {
             let constants = Self::bind_group(device, &uniforms.raw, constants_layout);
 
             Self {
-                vertices,
+                radial_vertices,
+                linear_vertices,
                 uniforms,
                 constants,
             }

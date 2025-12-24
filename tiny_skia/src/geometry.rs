@@ -437,6 +437,9 @@ pub fn into_paint(style: Style) -> tiny_skia::Paint<'static> {
                     )
                     .expect("Create linear gradient")
                 }
+                Gradient::Radial(_) => {
+                    todo!("tiny_skia RadialGradient not yet implemented")
+                }
             },
         },
         anti_alias: true,

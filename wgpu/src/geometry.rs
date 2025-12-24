@@ -565,6 +565,7 @@ impl Transform {
                 linear.start = self.transform_point(linear.start);
                 linear.end = self.transform_point(linear.end);
             }
+            Gradient::Radial(_) => (),
         }
 
         gradient

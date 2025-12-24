@@ -18,6 +18,7 @@ struct Gradient {
     end: Color,
     angle: Radians,
     transparent: bool,
+    is_radial_gradient: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -26,6 +27,7 @@ enum Message {
     EndChanged(Color),
     AngleChanged(Radians),
     TransparentToggled(bool),
+    IsRadialGradientToggled(bool),
 }
 
 impl Gradient {
@@ -35,6 +37,7 @@ impl Gradient {
             end: color!(0x0000ff),
             angle: Radians(0.0),
             transparent: false,
+            is_radial_gradient: false,
         }
     }
 
@@ -46,6 +49,9 @@ impl Gradient {
             Message::TransparentToggled(transparent) => {
                 self.transparent = transparent;
             }
+            Message::IsRadialGradientToggled(toggled) => {
+                self.is_radial_gradient = toggled;
+            }
         }
     }
 
@@ -55,15 +61,22 @@ impl Gradient {
             end,
             angle,
             transparent,
+            is_radial_gradient,
         } = *self;
 
         let gradient_box = container(space())
             .style(move |_theme| {
-                let gradient = gradient::Linear::new(angle)
-                    .add_stop(0.0, start)
-                    .add_stop(1.0, end);
-
-                gradient.into()
+                if is_radial_gradient {
+                    gradient::Radial::new()
+                        .add_stop(0.0, start)
+                        .add_stop(1.0, end)
+                        .into()
+                } else {
+                    gradient::Linear::new(angle)
+                        .add_stop(0.0, start)
+                        .add_stop(1.0, end)
+                        .into()
+                }
             })
             .width(Fill)
             .height(Fill);
@@ -71,6 +84,14 @@ impl Gradient {
         let angle_picker = row![
             text("Angle").width(64),
             slider(Radians::RANGE, self.angle, Message::AngleChanged).step(0.01)
+        ]
+        .spacing(8)
+        .padding(8)
+        .align_y(Center);
+
+        let radial_gradient_toggle = row![
+            text("Is radial gradient").width(64),
+            checkbox(is_radial_gradient).on_toggle(Message::IsRadialGradientToggled)
         ]
         .spacing(8)
         .padding(8)
@@ -87,6 +108,7 @@ impl Gradient {
             color_picker("Start", self.start).map(Message::StartChanged),
             color_picker("End", self.end).map(Message::EndChanged),
             angle_picker,
+            radial_gradient_toggle,
             transparency_toggle,
             gradient_box,
         ]
